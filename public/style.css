@@ -1,0 +1,57 @@
+:root {
+  --rr-good: #2e9d5b;
+  --rr-mid: #c9a227;
+  --rr-bad: #c8453b;
+}
+
+.brand { font-weight: 700; }
+#tabs a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: 0.35em; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--pico-spacing);
+  margin-bottom: var(--pico-block-spacing-vertical);
+}
+.card {
+  padding: var(--pico-spacing);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+}
+.card .label { font-size: 0.8rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.04em; }
+.card .value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.card .sub { font-size: 0.85rem; color: var(--pico-muted-color); }
+
+.album { display: flex; align-items: center; gap: 0.75rem; }
+.album .meta { line-height: 1.25; }
+.album .meta small { color: var(--pico-muted-color); }
+.cover {
+  width: 56px; height: 56px; flex: none;
+  border-radius: 4px; object-fit: cover;
+  background: var(--pico-muted-border-color);
+}
+.cover.big { width: 120px; height: 120px; }
+.cover.sm { width: 36px; height: 36px; }
+
+.album-list { padding-left: 1.4rem; margin: 0; }
+.album-list li { margin-bottom: 0.5rem; list-style: decimal; }
+.album-list .score { margin-left: auto; font-weight: 700; white-space: nowrap; }
+
+.table-wrap { overflow-x: auto; }
+table td.num, table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+th[data-sort] { cursor: pointer; user-select: none; }
+th[data-sort]::after { content: " ↕"; color: var(--pico-muted-color); font-size: 0.8em; }
+
+.chart { width: 100%; min-height: 320px; }
+.tag { font-size: 0.75rem; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px solid var(--pico-muted-border-color); color: var(--pico-muted-color); }
+
+.score-good { color: var(--rr-good); }
+.score-mid { color: var(--rr-mid); }
+.score-bad { color: var(--rr-bad); }
+
+@media (max-width: 576px) {
+  #tabs { gap: 0; }
+  #tabs a { padding-inline: 0.4rem; font-size: 0.9rem; }
+  .brand { font-size: 0.95rem; }
+}

@@ -1,5 +1,23 @@
 {
   "name": "recordsandrebuttals",
+  "main": "src/entry.py",
   "compatibility_date": "2026-11-01",
-  "assets": { "directory": "./public" }
+  "compatibility_flags": ["python_workers"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "routes": [
+    { "pattern": "recordsandrebuttals.com", "custom_domain": true },
+    { "pattern": "www.recordsandrebuttals.com", "custom_domain": true }
+  ],
+  // SHEETS_DOC_ID and LAST_FM_API_KEY (optional) are secrets, not vars:
+  //   npx wrangler secret put SHEETS_DOC_ID
+  // Optional: a SHEETS_GID secret picks the tab by numeric id instead of by name ("Albums").
+  // No "vars" block on purpose: deploying one would wipe vars set in the dashboard.
+  // Album-art R2 cache (optional). Create the bucket first, then uncomment:
+  //   npx wrangler r2 bucket create record-club-art
+  // "r2_buckets": [{ "binding": "COVER_ART_BUCKET", "bucket_name": "record-club-art" }],
+  "observability": { "enabled": true }
 }

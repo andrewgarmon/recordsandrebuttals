@@ -1,6 +1,84 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Records & Rebuttals</title></head>
-<body><h1>Records & Rebuttals</h1><p>Coming soon.</p></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Records &amp; Rebuttals</title>
+  <meta name="description" content="Scores, favorites and hot takes from the record club.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💿</text></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul><li><a href="#overview" class="brand">💿 Records &amp; Rebuttals</a></li></ul>
+      <ul id="tabs">
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#albums">Albums</a></li>
+        <li><a href="#listeners">Listeners</a></li>
+        <li><a href="#stats">Stats</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <p id="status" aria-busy="true">Loading the latest scores…</p>
+
+    <section id="overview" class="page" hidden>
+      <div id="overview-cards" class="cards"></div>
+      <div class="grid">
+        <article><header>Top album</header><div id="top-album"></div></article>
+        <article><header>Bottom album</header><div id="bottom-album"></div></article>
+      </div>
+      <article><header>Score distribution</header><div id="chart-histogram" class="chart"></div></article>
+    </section>
+
+    <section id="albums" class="page" hidden>
+      <div class="grid leaderboards">
+        <article><header>Top 25</header><ol id="lb-top" class="album-list"></ol></article>
+        <article><header>Bottom 10</header><ol id="lb-bottom" class="album-list"></ol></article>
+      </div>
+      <div class="grid leaderboards">
+        <article><header>Most divisive</header><ol id="lb-divisive" class="album-list"></ol></article>
+        <article><header>Most unanimous</header><ol id="lb-unanimous" class="album-list"></ol></article>
+      </div>
+      <article>
+        <header>All albums</header>
+        <input id="album-search" type="search" placeholder="Search artist, album or requester" aria-label="Search albums">
+        <div class="table-wrap"><table id="album-table" class="striped"></table></div>
+      </article>
+      <div class="grid">
+        <article><header>Favorite tracks</header><div class="table-wrap"><table id="fav-tracks" class="striped"></table></div></article>
+        <article><header>Least favorite tracks</header><div class="table-wrap"><table id="least-tracks" class="striped"></table></div></article>
+      </div>
+    </section>
+
+    <section id="listeners" class="page" hidden>
+      <label for="listener-select">Listener</label>
+      <select id="listener-select"></select>
+      <div id="listener-profile"></div>
+      <article><header>Average score by listener (rows) and requester (columns)</header><div id="chart-matrix" class="chart"></div></article>
+      <article>
+        <header>How differently listeners score (RMSE on shared albums, lower = more alike)</header>
+        <div id="chart-deviation" class="chart"></div>
+      </article>
+    </section>
+
+    <section id="stats" class="page" hidden>
+      <div id="superlatives" class="cards"></div>
+      <article><header>Who picks the best records? <small>(requester's own scores excluded)</small></header><div class="table-wrap"><table id="requester-table" class="striped"></table></div></article>
+      <div class="grid">
+        <article><header>By decade</header><div id="chart-decades" class="chart"></div></article>
+        <article><header>Release year vs. score <small id="pearson"></small></header><div id="chart-years" class="chart"></div></article>
+      </div>
+      <article><header>Club timeline</header><div id="chart-timeline" class="chart"></div></article>
+      <article><header>Hottest takes <small>(furthest from the rest of the club)</small></header><div class="table-wrap"><table id="hot-takes" class="striped"></table></div></article>
+    </section>
+  </main>
+
+  <footer class="container"><small id="footer"></small></footer>
+</body>
 </html>
