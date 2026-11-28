@@ -8,6 +8,10 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
+  // A shareable URL for every non-production build (each PR/branch). Set here
+  // because Wrangler leaves the dashboard setting alone when this is unset, and
+  // it starts off for Workers created with custom domains.
+  "preview_urls": true,
   "routes": [
     { "pattern": "recordsandrebuttals.com", "custom_domain": true },
     { "pattern": "www.recordsandrebuttals.com", "custom_domain": true }
