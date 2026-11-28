@@ -42,7 +42,6 @@ class Album:
     date: str | None = None  # ISO 8601 (YYYY-MM-DD) when parseable, else as written
     release_year: int | None = None
     decade: str | None = None
-    genres: tuple[str, ...] = ()  # broadest first; filled by pipeline/genres.py
 
 
 @dataclass(frozen=True)

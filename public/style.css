@@ -21,7 +21,6 @@
 }
 .card .label { font-size: 0.8rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.04em; }
 .card .value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
-.cards.names .value { font-size: 1.25rem; hyphens: none; }
 .card .sub { font-size: 0.85rem; color: var(--pico-muted-color); }
 
 .album { display: flex; align-items: center; gap: 0.75rem; }
@@ -45,8 +44,6 @@ th[data-sort] { cursor: pointer; user-select: none; }
 th[data-sort]::after { content: " ↕"; color: var(--pico-muted-color); font-size: 0.8em; }
 
 .chart { width: 100%; min-height: 320px; }
-.chart.tall { min-height: 420px; }
-.swatch { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; margin-right: 0.35em; vertical-align: baseline; }
 .tag { font-size: 0.75rem; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px solid var(--pico-muted-border-color); color: var(--pico-muted-color); }
 
 .score-good { color: var(--rr-good); }
@@ -54,8 +51,7 @@ th[data-sort]::after { content: " ↕"; color: var(--pico-muted-color); font-siz
 .score-bad { color: var(--rr-bad); }
 
 @media (max-width: 576px) {
-  header nav { flex-wrap: wrap; }
-  #tabs { gap: 0; width: 100%; justify-content: space-between; margin-inline: 0; }
+  #tabs { gap: 0; }
   #tabs a { padding-inline: 0.4rem; font-size: 0.9rem; }
   .brand { font-size: 0.95rem; }
 }

@@ -19,7 +19,6 @@
         <li><a href="#overview">Overview</a></li>
         <li><a href="#albums">Albums</a></li>
         <li><a href="#listeners">Listeners</a></li>
-        <li><a href="#genres">Genres</a></li>
         <li><a href="#stats">Stats</a></li>
       </ul>
     </nav>
@@ -66,25 +65,6 @@
         <header>How differently listeners score (RMSE on shared albums, lower = more alike)</header>
         <div id="chart-deviation" class="chart"></div>
       </article>
-    </section>
-
-    <section id="genres" class="page" hidden>
-      <div id="genre-cards" class="cards names"></div>
-      <div class="grid">
-        <article><header>What we pick</header><div id="chart-genre-share" class="chart"></div></article>
-        <article><header>What we rate highest</header><div id="chart-genre-scores" class="chart"></div></article>
-      </div>
-      <article>
-        <header>Who likes what <small>(each listener's average for a genre, minus their usual average; own picks left out)</small></header>
-        <div id="chart-genre-taste" class="chart tall"></div>
-      </article>
-      <article><header>Everyone's favorite and least favorite genre <small>(at least 3 scores in a genre)</small></header><div class="table-wrap"><table id="genre-favs" class="striped"></table></div></article>
-      <div class="grid">
-        <article><header>Who picks what</header><div id="chart-genre-requesters" class="chart"></div></article>
-        <article><header>Genres by decade</header><div id="chart-genre-decades" class="chart"></div></article>
-      </div>
-      <article><header>Every genre</header><div class="table-wrap"><table id="genre-table" class="striped"></table></div></article>
-      <p><small id="genre-note"></small></p>
     </section>
 
     <section id="stats" class="page" hidden>
