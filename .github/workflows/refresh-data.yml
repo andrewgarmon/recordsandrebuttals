@@ -2,7 +2,7 @@ name: Refresh club data
 
 # Rebuilds the stats from the Google Sheet and stores them in Workers KV,
 # where the Worker serves them from. Runs every 30 minutes, after changes to
-# the stats code land on main, and on demand (Actions tab > Run workflow).
+# the stats code or KV config land on main, and on demand (Actions tab > Run workflow).
 
 on:
   schedule:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["pipeline/**", ".github/workflows/refresh-data.yml"]
+    paths: ["pipeline/**", "wrangler.jsonc", ".github/workflows/refresh-data.yml"]
 
 concurrency:
   group: refresh-club-data

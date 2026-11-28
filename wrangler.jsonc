@@ -13,7 +13,7 @@
     { "pattern": "www.recordsandrebuttals.com", "custom_domain": true }
   ],
   // Stats JSON, written by the "Refresh club data" GitHub Action (pipeline/build_data.py).
-  "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }],
+  "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "4c60988200444f79adab1bbb550d36d6" }],
   // Optional secret LAST_FM_API_KEY adds Last.fm as an album-art source:
   //   npx wrangler secret put LAST_FM_API_KEY
   // No "vars" block on purpose: deploying one would wipe vars set in the dashboard.
