@@ -12,9 +12,10 @@
     { "pattern": "recordsandrebuttals.com", "custom_domain": true },
     { "pattern": "www.recordsandrebuttals.com", "custom_domain": true }
   ],
-  // SHEETS_DOC_ID and LAST_FM_API_KEY (optional) are secrets, not vars:
-  //   npx wrangler secret put SHEETS_DOC_ID
-  // Optional: a SHEETS_GID secret picks the tab by numeric id instead of by name ("Albums").
+  // Stats JSON, written by the "Refresh club data" GitHub Action (pipeline/build_data.py).
+  "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }],
+  // Optional secret LAST_FM_API_KEY adds Last.fm as an album-art source:
+  //   npx wrangler secret put LAST_FM_API_KEY
   // No "vars" block on purpose: deploying one would wipe vars set in the dashboard.
   // Album-art R2 cache (optional). Create the bucket first, then uncomment:
   //   npx wrangler r2 bucket create record-club-art

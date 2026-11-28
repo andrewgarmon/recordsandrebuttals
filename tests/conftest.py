@@ -1,13 +1,15 @@
-"""Shared fixtures. Puts ``src/`` on the path the way the Worker sees it."""
+"""Shared fixtures. Puts ``src/`` (Worker) and ``pipeline/`` on the path."""
 
 import os
 import sys
 
 import pytest
 
-SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+for sub in ("src", "pipeline"):
+    path = os.path.join(ROOT, sub)
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 
 # Shaped like the live sheet (gviz CSV export): whitespace date header,

@@ -12,7 +12,6 @@ import types
 
 import pytest
 
-from conftest import RAW_SHEET_CSV
 
 
 class FakeResponse:
@@ -57,6 +56,16 @@ class FakeAssets:
 class FakeRequest:
     def __init__(self, url):
         self.url = url
+
+
+class FakeKV:
+    def __init__(self, data=None):
+        self.data = data or {}
+        self.gets = 0
+
+    async def get(self, key):
+        self.gets += 1
+        return self.data.get(key)
 
 
 class Env:
@@ -113,44 +122,31 @@ def test_unknown_api_route_404(entry):
     assert call(entry, "https://x.test/api/nope").status == 404
 
 
-def test_club_data_requires_doc_id(entry):
+def test_club_data_requires_kv_binding(entry):
     resp = call(entry, "https://x.test/api/club-data")
     assert resp.status == 500
-    assert "SHEETS_DOC_ID" in json.loads(resp.body)["error"]
+    assert "CLUB_DATA" in json.loads(resp.body)["error"]
     assert entry._test.cache.store == {}  # errors are not cached
 
 
-def test_club_data_parses_sheet_and_caches(entry):
-    entry._test.routes["https://docs.google.com/"] = FakeResponse(RAW_SHEET_CSV)
-    resp = call(entry, "https://x.test/api/club-data?bust=1", SHEETS_DOC_ID="DOC")
+def test_club_data_empty_kv_is_503_and_not_cached(entry):
+    resp = call(entry, "https://x.test/api/club-data", CLUB_DATA=FakeKV())
+    assert resp.status == 503
+    assert entry._test.cache.store == {}
+
+
+def test_club_data_passes_kv_json_through_and_caches(entry):
+    kv = FakeKV({"club-data": '{"overview": {"album_count": 4}}'})
+    resp = call(entry, "https://x.test/api/club-data?bust=1", CLUB_DATA=kv)
     assert resp.status == 200
-    payload = json.loads(resp.body)
-    assert payload["overview"]["album_count"] == 4
+    assert json.loads(resp.body) == {"overview": {"album_count": 4}}
+    assert resp.headers["content-type"].startswith("application/json")
     assert resp.headers["cache-control"] == "public, max-age=300"
-    assert entry._test.calls == [
-        "https://docs.google.com/spreadsheets/d/DOC/gviz/tq?tqx=out:csv&sheet=Albums"
-    ]
-    # Second request is served from the edge cache (query string ignored).
-    again = call(entry, "https://x.test/api/club-data", SHEETS_DOC_ID="DOC")
-    assert json.loads(again.body) == payload
-    assert len(entry._test.calls) == 1
-
-
-def test_club_data_uses_gid_when_set(entry):
-    entry._test.routes["https://docs.google.com/"] = FakeResponse(RAW_SHEET_CSV)
-    call(entry, "https://x.test/api/club-data", SHEETS_DOC_ID="DOC", SHEETS_GID="42")
-    assert entry._test.calls == ["https://docs.google.com/spreadsheets/d/DOC/export?format=csv&gid=42"]
-
-
-def test_club_data_sheet_failure_is_502(entry):
-    entry._test.routes["https://docs.google.com/"] = FakeResponse("denied", status=403)
-    assert call(entry, "https://x.test/api/club-data", SHEETS_DOC_ID="DOC").status == 502
-
-
-def test_club_data_bad_sheet_shape_is_502(entry):
-    entry._test.routes["https://docs.google.com/"] = FakeResponse("a,b\n1,2\n")
-    resp = call(entry, "https://x.test/api/club-data", SHEETS_DOC_ID="DOC")
-    assert resp.status == 502 and "Average" in json.loads(resp.body)["error"]
+    # Second request comes from the edge cache (query string ignored), not KV.
+    again = call(entry, "https://x.test/api/club-data", CLUB_DATA=kv)
+    assert again.body == resp.body
+    assert kv.gets == 1
+    assert entry._test.calls == []  # no outbound fetches
 
 
 def test_album_art_requires_params(entry):

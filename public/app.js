@@ -10,14 +10,18 @@ const esc = (v) =>
 const fmt = (v, digits = 1) => (v === null || v === undefined ? "—" : Number(v).toFixed(digits));
 const fmtInt = (v) => (v === null || v === undefined ? "—" : String(v));
 
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 let DATA = null;
 let ALBUMS = new Map();
 let SCALE = { min: 0, max: 100 };
+// Colors span the club's own spread (mean ± 2σ), not the whole 0-100 scale,
+// so an 80 vs a 90 actually looks different.
+let CMIN = 0, CMAX = 100, AXIS_MIN = 0;
 
 function scoreClass(v) {
   if (v === null || v === undefined) return "";
-  const t = (v - SCALE.min) / (SCALE.max - SCALE.min);
-  return t >= 0.75 ? "score-good" : t >= 0.5 ? "score-mid" : "score-bad";
+  const t = (v - CMIN) / (CMAX - CMIN);
+  return t >= 0.6 ? "score-good" : t >= 0.4 ? "score-mid" : "score-bad";
 }
 
 function artUrl(a) {
@@ -25,7 +29,7 @@ function artUrl(a) {
 }
 
 function cover(a, size = "") {
-  return `<img class="cover ${size}" loading="lazy" alt="" src="${artUrl(a)}" onerror="this.onerror=null;this.removeAttribute('src')">`;
+  return `<img class="cover ${size}" loading="lazy" alt="" src="${artUrl(a)}" onerror="this.onerror=null;this.src=BLANK">`;
 }
 
 function albumBlock(id, { size = "", extra = "" } = {}) {
@@ -134,8 +138,9 @@ function renderOverview() {
     ids.map((id) => albumBlock(id, { size: "big", extra: `<span class="score ${scoreClass(ALBUMS.get(id).mean)}"><strong>${fmt(ALBUMS.get(id).mean)}</strong></span>` })).join("<hr>") || "—";
   $("#top-album").innerHTML = showcase(o.top_album_ids);
   $("#bottom-album").innerHTML = showcase(o.bottom_album_ids);
-  plot("chart-histogram", [{ type: "histogram", x: o.scores, xbins: { start: SCALE.min, end: SCALE.max + 1, size: (SCALE.max - SCALE.min) / 20 }, marker: { color: "#4c78a8" } }], {
-    xaxis: { title: "Score", range: [SCALE.min, SCALE.max + 1] }, yaxis: { title: "Reviews" }, bargap: 0.05,
+  const lo = o.scores.length ? Math.floor(Math.min(...o.scores) / 10) * 10 : SCALE.min;
+  plot("chart-histogram", [{ type: "histogram", x: o.scores, xbins: { start: lo, end: SCALE.max + 1, size: (SCALE.max - SCALE.min) / 50 }, marker: { color: "#4c78a8" } }], {
+    xaxis: { title: "Score", range: [lo, SCALE.max + 1] }, yaxis: { title: "Reviews" }, bargap: 0.05,
   });
 }
 
@@ -194,8 +199,8 @@ function renderListenerProfile(name) {
     </div>
     <article><header>How differently ${esc(name)} scores from each listener (RMSE)</header><div id="chart-listener-dev" class="chart"></div></article>`;
   const bar = (id, labels, values) =>
-    plot(id, [{ type: "bar", x: labels, y: values, marker: { color: values.map((v) => (v === null ? "#999" : v)), colorscale: RYG, cmin: SCALE.min, cmax: SCALE.max } }], {
-      yaxis: { range: [SCALE.min, SCALE.max] },
+    plot(id, [{ type: "bar", x: labels, y: values, marker: { color: values.map((v) => (v === null ? "#999" : v)), colorscale: RYG, cmin: CMIN, cmax: CMAX } }], {
+      yaxis: { range: [AXIS_MIN, SCALE.max] },
     });
   const reqs = DATA.requesters;
   bar("chart-given", reqs, reqs.map((r) => p.given_by_requester[r] ?? null));
@@ -210,7 +215,7 @@ function renderListeners() {
   if (DATA.listeners.length) renderListenerProfile(DATA.listeners[0]);
 
   const L = DATA.listeners;
-  heatmap("chart-matrix", L, DATA.requesters, (l, r) => DATA.listener_requester[l]?.[r] ?? null, { zmin: SCALE.min, zmax: SCALE.max });
+  heatmap("chart-matrix", L, DATA.requesters, (l, r) => DATA.listener_requester[l]?.[r] ?? null, { zmin: CMIN, zmax: CMAX });
   const dev = DATA.deviation;
   const rows = [...L, "average"];
   heatmap("chart-deviation", rows, L, (a, b) => (a === "average" ? dev.average[b] : dev.matrix[a]?.[b]) ?? null, { colorscale: GYR });
@@ -240,8 +245,8 @@ function renderStats() {
   plot("chart-decades", [{
     type: "bar", x: s.decades.map((d) => d.decade), y: s.decades.map((d) => d.mean),
     text: s.decades.map((d) => `${d.album_count} albums`), textposition: "auto",
-    marker: { color: s.decades.map((d) => d.mean), colorscale: RYG, cmin: SCALE.min, cmax: SCALE.max },
-  }], { yaxis: { title: "Avg score", range: [SCALE.min, SCALE.max] } });
+    marker: { color: s.decades.map((d) => d.mean), colorscale: RYG, cmin: CMIN, cmax: CMAX },
+  }], { yaxis: { title: "Avg score", range: [AXIS_MIN, SCALE.max] } });
 
   const yc = s.year_correlation;
   $("#pearson").textContent = yc.pearson_r === null ? "" : `(r = ${fmt(yc.pearson_r, 2)})`;
@@ -250,7 +255,7 @@ function renderStats() {
     x: yc.points.map((p) => p.release_year), y: yc.points.map((p) => p.mean),
     text: yc.points.map((p) => `${ALBUMS.get(p.album_id)?.album} — ${ALBUMS.get(p.album_id)?.artist}`),
     hovertemplate: "%{text}<br>%{x}: %{y:.1f}<extra></extra>",
-    marker: { size: 10, color: yc.points.map((p) => p.mean), colorscale: RYG, cmin: SCALE.min, cmax: SCALE.max },
+    marker: { size: 10, color: yc.points.map((p) => p.mean), colorscale: RYG, cmin: CMIN, cmax: CMAX },
   }], { xaxis: { title: "Release year" }, yaxis: { title: "Avg score" } });
 
   const tl = s.timeline;
@@ -259,7 +264,7 @@ function renderStats() {
     {
       type: "scatter", mode: "markers", x: tl.map((t) => t.date), y: tl.map((t) => t.cumulative),
       text: tl.map((t) => `${ALBUMS.get(t.album_id)?.album} — ${fmt(t.mean)}`), hovertemplate: "%{x}<br>%{text}<extra></extra>",
-      marker: { size: 9, color: tl.map((t) => t.mean ?? SCALE.min), colorscale: RYG, cmin: SCALE.min, cmax: SCALE.max },
+      marker: { size: 9, color: tl.map((t) => t.mean ?? CMIN), colorscale: RYG, cmin: CMIN, cmax: CMAX },
     },
   ], { showlegend: false, yaxis: { title: "Albums reviewed" } });
 
@@ -302,8 +307,15 @@ async function boot() {
     DATA = body;
     SCALE = DATA.score_scale || SCALE;
     ALBUMS = new Map(DATA.albums.map((a) => [a.album_id, a]));
+    const { mean, stdev } = DATA.overview;
+    if (mean !== null && stdev) {
+      CMIN = Math.max(SCALE.min, mean - 2 * stdev);
+      CMAX = Math.min(SCALE.max, mean + 2 * stdev);
+      AXIS_MIN = Math.max(SCALE.min, Math.floor((CMIN - 10) / 10) * 10);
+    }
     status.remove();
-    $("#footer").textContent = `${DATA.overview.album_count} albums · ${DATA.overview.review_count} reviews · data refreshes every 5 minutes`;
+    const updated = DATA.generated_at ? ` · updated ${new Date(DATA.generated_at).toLocaleString()}` : "";
+    $("#footer").textContent = `${DATA.overview.album_count} albums · ${DATA.overview.review_count} reviews${updated}`;
     show();
   } catch (err) {
     status.removeAttribute("aria-busy");

@@ -1,12 +1,13 @@
 """Cloudflare Worker entrypoint.
 
 Routes:
-  GET /api/club-data                       all stats as JSON (edge-cached 5 min)
+  GET /api/club-data                       stats JSON from KV (edge-cached 5 min)
   GET /api/album-art?artist=...&album=...  cover image (R2 if bound, else edge cache)
   everything else                          static files from ./public
 
-All Workers-specific code lives here; sheet_parser, analytics and art are
-plain Python and are tested without the runtime.
+The stats are built off-Worker by pipeline/build_data.py (a scheduled
+GitHub Action) and stored in the CLUB_DATA KV namespace, so serving them
+costs almost no CPU. art.py is plain Python, tested without the runtime.
 """
 
 import json
@@ -15,11 +16,10 @@ from urllib.parse import parse_qs, urlparse
 from js import caches
 from workers import Response, WorkerEntrypoint, fetch
 
-import analytics
 import art
-import sheet_parser
 
 CLUB_DATA_TTL = 300  # 5 minutes
+CLUB_DATA_KEY = "club-data"
 ART_TTL = 7 * 24 * 3600  # 7 days (edge cache, when R2 isn't bound)
 ART_MISS_TTL = 24 * 3600  # remember "no cover found" for a day
 R2_ART_CACHE_CONTROL = "public, max-age=31536000, immutable"
@@ -120,18 +120,23 @@ class Default(WorkerEntrypoint):
         return await _cached(cache_key, self._build_club_data)
 
     async def _build_club_data(self):
-        doc_id = _env(self.env, "SHEETS_DOC_ID")
-        if not doc_id:
-            return _json_response({"error": "SHEETS_DOC_ID is not configured"}, status=500)
-        sheet_url = sheet_parser.sheet_csv_url(str(doc_id), gid=_env(self.env, "SHEETS_GID"))
-        resp = await fetch(sheet_url)
-        if not resp.ok:
-            return _json_response({"error": f"sheet fetch failed ({resp.status})"}, status=502)
-        try:
-            data = sheet_parser.parse_csv(await resp.text())
-        except sheet_parser.SheetFormatError as exc:
-            return _json_response({"error": str(exc)}, status=502)
-        return _json_response(analytics.build_payload(data), max_age=CLUB_DATA_TTL)
+        kv = _env(self.env, "CLUB_DATA")
+        if kv is None:
+            return _json_response({"error": "CLUB_DATA KV namespace is not bound"}, status=500)
+        body = await kv.get(CLUB_DATA_KEY)
+        if body is None or str(body) in ("", "undefined"):
+            return _json_response(
+                {"error": "No club data yet. Run the 'Refresh club data' GitHub Action."},
+                status=503,
+            )
+        # Pass the stored JSON straight through: parsing it would only cost CPU.
+        return Response(
+            str(body),
+            headers={
+                "content-type": "application/json; charset=utf-8",
+                "cache-control": f"public, max-age={CLUB_DATA_TTL}",
+            },
+        )
 
     # -- /api/album-art ----------------------------------------------------
 
