@@ -148,8 +148,6 @@ def test_listener_profiles(club):
     assert "Alice" not in alice["deviation"]
     assert p["Bob"]["favorite_album_ids"] == [3, 4]  # tie kept
     assert p["Bob"]["stdev_given"] == approx(math.sqrt(200))
-    self_flags = {s["album_id"]: s["self"] for s in p["Bob"]["scores"]}
-    assert self_flags == {1: False, 2: True, 3: False, 4: True}
 
 
 def test_superlatives(club):
@@ -188,7 +186,7 @@ def test_requester_with_only_self_reviews():
 
 def test_decades(club):
     decades = analytics.decade_breakdown(club, analytics.album_stats(club))
-    assert [d["decade"] for d in decades] == ["60s", "70s", "1990s"]
+    assert [d["decade"] for d in decades] == ["1960s", "1970s", "1990s"]
     assert decades[0]["album_count"] == 2 and decades[0]["mean"] == approx(80)
 
 

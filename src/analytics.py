@@ -39,8 +39,12 @@ HOT_TAKES_N = 10
 # --------------------------------------------------------------------------
 
 
+# Plain float arithmetic: the statistics module's exact-fraction stdev is
+# several times slower, and CPU time is the budget that matters here.
+
+
 def mean(values: Sequence[float]) -> float | None:
-    return statistics.fmean(values) if values else None
+    return math.fsum(values) / len(values) if values else None
 
 
 def median(values: Sequence[float]) -> float | None:
@@ -49,13 +53,21 @@ def median(values: Sequence[float]) -> float | None:
 
 def stdev(values: Sequence[float]) -> float | None:
     """Sample standard deviation; None with fewer than two values."""
-    return statistics.stdev(values) if len(values) >= 2 else None
+    n = len(values)
+    if n < 2:
+        return None
+    m = math.fsum(values) / n
+    return math.sqrt(math.fsum((v - m) ** 2 for v in values) / (n - 1))
+
+
+def _fmean(values: Sequence[float]) -> float:
+    return math.fsum(values) / len(values)
 
 
 def pearson(xs: Sequence[float], ys: Sequence[float]) -> float | None:
     if len(xs) != len(ys) or len(xs) < 2:
         return None
-    mx, my = statistics.fmean(xs), statistics.fmean(ys)
+    mx, my = _fmean(xs), _fmean(ys)
     sxx = sum((x - mx) ** 2 for x in xs)
     syy = sum((y - my) ** 2 for y in ys)
     if sxx == 0 or syy == 0:
@@ -74,18 +86,32 @@ def _argbest(items: dict[str, float], *, highest: bool) -> list[str]:
 
 def round_floats(obj: Any, digits: int = ROUND_DIGITS) -> Any:
     """Round every float in a nested structure (for serialization only)."""
-    if isinstance(obj, float):
+    t = type(obj)
+    if t is float:
         return round(obj, digits)
-    if isinstance(obj, dict):
+    if t is dict:
         return {k: round_floats(v, digits) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if t is list or t is tuple:
+        if obj and all(type(v) in _SCALARS for v in obj):
+            return [round(v, digits) if type(v) is float else v for v in obj]
         return [round_floats(v, digits) for v in obj]
     return obj
+
+
+_SCALARS = (float, int, str, bool, type(None))
 
 
 # --------------------------------------------------------------------------
 # Indexes
 # --------------------------------------------------------------------------
+
+
+def _index(data: ClubData) -> "_Index":
+    """The (memoized) index for this ClubData."""
+    idx = data.__dict__.get("_index")
+    if idx is None:
+        idx = data.__dict__["_index"] = _Index(data)
+    return idx
 
 
 class _Index:
@@ -102,6 +128,10 @@ class _Index:
         for r in self.reviews:
             seen.setdefault(r.listener)
         self.listeners: list[str] = list(seen)
+        self.by_requester: dict[str, list[Album]] = defaultdict(list)
+        for a in data.albums:
+            if a.requester:
+                self.by_requester[a.requester].append(a)
         self.requesters: list[str] = sorted(
             {a.requester for a in data.albums if a.requester},
             key=lambda n: (self.listeners.index(n) if n in self.listeners else len(self.listeners), n),
@@ -121,7 +151,7 @@ class _Index:
 
 def album_stats(data: ClubData) -> list[dict[str, Any]]:
     """Metadata plus score aggregates for every album, in sheet order."""
-    idx = _Index(data)
+    idx = _index(data)
     return [_album_row(idx, a) for a in data.albums]
 
 
@@ -167,7 +197,7 @@ def leaderboards(rows: Iterable[dict[str, Any]]) -> dict[str, list[int]]:
 
 
 def overview(data: ClubData, rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    idx = _Index(data)
+    idx = _index(data)
     rows = rows if rows is not None else album_stats(data)
     scores = [r.score for r in idx.reviews]
     means = {str(r["album_id"]): r["mean"] for r in rows if r["count"] > 0}
@@ -192,7 +222,7 @@ def overview(data: ClubData, rows: list[dict[str, Any]] | None = None) -> dict[s
 
 
 def track_counts(data: ClubData) -> dict[str, list[dict[str, Any]]]:
-    idx = _Index(data)
+    idx = _index(data)
 
     def count(attr: str) -> list[dict[str, Any]]:
         counts: dict[tuple[int, str], list[str]] = defaultdict(list)
@@ -220,7 +250,7 @@ def listener_requester_matrix(data: ClubData) -> dict[str, dict[str, float | Non
     The diagonal (a listener scoring their own picks) is included as data;
     summary stats elsewhere exclude it.
     """
-    idx = _Index(data)
+    idx = _index(data)
     cells: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for r in idx.reviews:
         req = idx.requester_of(r.album_id)
@@ -243,7 +273,7 @@ def deviation_matrix(data: ClubData) -> dict[str, Any]:
     ``matrix[a][b]`` is None on the diagonal and where a and b share no
     albums. ``average[b]`` is the mean of b's column over real values only.
     """
-    idx = _Index(data)
+    idx = _index(data)
     by_listener = {l: {r.album_id: r.score for r in idx.by_listener[l]} for l in idx.listeners}
     matrix: dict[str, dict[str, float | None]] = {}
     overlap: dict[str, dict[str, int]] = {}
@@ -256,7 +286,7 @@ def deviation_matrix(data: ClubData) -> dict[str, Any]:
                 matrix[a][b] = None
                 continue
             sq = [(by_listener[a][k] - by_listener[b][k]) ** 2 for k in common]
-            matrix[a][b] = math.sqrt(statistics.fmean(sq))
+            matrix[a][b] = math.sqrt(_fmean(sq))
     average = {
         b: mean([matrix[a][b] for a in idx.listeners if matrix[a][b] is not None])
         for b in idx.listeners
@@ -274,7 +304,7 @@ def listener_profiles(
     matrix: dict[str, dict[str, float | None]] | None = None,
     deviation: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    idx = _Index(data)
+    idx = _index(data)
     matrix = matrix if matrix is not None else listener_requester_matrix(data)
     deviation = deviation if deviation is not None else deviation_matrix(data)
     profiles: dict[str, dict[str, Any]] = {}
@@ -283,7 +313,10 @@ def listener_profiles(
         given_scores = [r.score for r in given]
         by_album = {str(r.album_id): r.score for r in given}
         received = [
-            r for r in idx.reviews if idx.requester_of(r.album_id) == lst and r.listener != lst
+            r
+            for a in idx.by_requester.get(lst, [])
+            for r in idx.by_album.get(a.album_id, [])
+            if r.listener != lst
         ]
         received_by: dict[str, list[float]] = defaultdict(list)
         for r in received:
@@ -295,16 +328,13 @@ def listener_profiles(
             "stdev_given": stdev(given_scores),
             "favorite_album_ids": [int(k) for k in _argbest(by_album, highest=True)],
             "least_favorite_album_ids": [int(k) for k in _argbest(by_album, highest=False)],
-            "requested_album_ids": [a.album_id for a in data.albums if a.requester == lst],
+            "requested_album_ids": [a.album_id for a in idx.by_requester.get(lst, [])],
             "avg_received": mean([r.score for r in received]),
             "received_count": len(received),
             "given_by_requester": dict(matrix.get(lst, {})),
             "received_by_listener": {
                 other: mean(received_by[other]) for other in idx.listeners if other != lst
             },
-            "scores": [
-                {"album_id": r.album_id, "score": r.score, "self": idx.is_self(r)} for r in given
-            ],
             "deviation": {
                 other: v for other, v in deviation["matrix"].get(lst, {}).items() if other != lst
             },
@@ -338,17 +368,17 @@ def superlatives(profiles: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any
 
 def requester_leaderboard(data: ClubData) -> list[dict[str, Any]]:
     """How each requester's picks were received, excluding their own scores."""
-    idx = _Index(data)
+    idx = _index(data)
     out = []
     for req in idx.requesters:
-        picks = [a for a in data.albums if a.requester == req]
+        picks = idx.by_requester.get(req, [])
         pick_means: dict[str, float] = {}
         all_scores: list[float] = []
         for a in picks:
             others = [r.score for r in idx.by_album.get(a.album_id, []) if r.listener != req]
             all_scores.extend(others)
             if others:
-                pick_means[str(a.album_id)] = statistics.fmean(others)
+                pick_means[str(a.album_id)] = _fmean(others)
         out.append(
             {
                 "requester": req,
@@ -367,7 +397,7 @@ def requester_leaderboard(data: ClubData) -> list[dict[str, Any]]:
 
 
 def decade_breakdown(data: ClubData, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    idx = _Index(data)
+    idx = _index(data)
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         if r["decade"]:
@@ -434,13 +464,13 @@ def hot_takes(data: ClubData, n: int = HOT_TAKES_N) -> list[dict[str, Any]]:
     ``club_avg`` is the mean of the *other* listeners' scores, so a take
     isn't diluted by itself; albums with only one reviewer are skipped.
     """
-    idx = _Index(data)
+    idx = _index(data)
     takes = []
     for r in idx.reviews:
         others = [o.score for o in idx.by_album[r.album_id] if o.listener != r.listener]
         if not others:
             continue
-        club_avg = statistics.fmean(others)
+        club_avg = _fmean(others)
         takes.append(
             {
                 "album_id": r.album_id,
@@ -465,7 +495,7 @@ def build_payload(data: ClubData) -> dict[str, Any]:
     matrix = listener_requester_matrix(data)
     deviation = deviation_matrix(data)
     profiles = listener_profiles(data, matrix=matrix, deviation=deviation)
-    idx = _Index(data)
+    idx = _index(data)
     payload = {
         "score_scale": {"min": SCORE_MIN, "max": SCORE_MAX},
         "listeners": idx.listeners,

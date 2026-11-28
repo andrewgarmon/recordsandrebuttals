@@ -4,12 +4,12 @@ Every quirk of the sheet lives in this module so nothing downstream has to
 know about it:
 
 * The date column has a blank / whitespace-only header (``" "``).
-* Each listener has three adjacent columns: score, favorite track and least
-  favorite track. Their headers repeat the listener's name (``Alice``,
-  ``Alice``, ``Alice``), may carry pandas-style suffixes (``Alice.1``,
-  ``Alice.2``), or may be blank.
+* Each listener's name appears three times: in the score block, then in the
+  ``Favorite`` block and the ``Worst`` block further right (pandas-style
+  ``Name.1`` / ``Name.2`` headers are accepted too).
 * Listener columns are found by position: everything after the last
-  metadata column and before ``Average``.
+  metadata column and before ``Average``. ``Decade`` sits after the
+  track blocks and holds e.g. ``2020``.
 * Cells carry stray whitespace, and the sheet has blank or half-filled rows.
 
 The output (:class:`ClubData`) has no sheet-specific concepts in it.
@@ -29,6 +29,7 @@ AVERAGE_COLUMN = "Average"
 DEFAULT_SHEET_NAME = "Albums"
 
 _SUFFIX_RE = re.compile(r"^(.*?)\.(\d+)$")
+_MDY_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%d-%b-%Y", "%b %d, %Y")
 
 
@@ -97,7 +98,7 @@ def parse_csv(text: str) -> ClubData:
         album_id = next_id
         next_id += 1
         release_year = _parse_year(_cell(cells, layout.meta, "Release Year"))
-        decade = _cell(cells, layout.meta, "Decade") or _year_to_decade(release_year)
+        decade = _normalize_decade(_cell(cells, layout.meta, "Decade")) or _year_to_decade(release_year)
         albums.append(
             Album(
                 album_id=album_id,
@@ -147,6 +148,10 @@ def _base_name(col: str) -> str:
     return m.group(1) if m else col
 
 
+_FAVORITE_MARKERS = {"favorite", "favorites", "favourite", "favorite track", "favorite tracks"}
+_WORST_MARKERS = {"worst", "least favorite", "least favorite track", "least favorite tracks"}
+
+
 @dataclass
 class _Layout:
     meta: dict[str, int]
@@ -155,40 +160,61 @@ class _Layout:
 
     @classmethod
     def from_header(cls, cols: list[str]) -> "_Layout":
+        """Work out which column holds what.
+
+        The live sheet is laid out in blocks::
+
+            Date Requester Artist Album Release Year | Riley Sky ... | Average Median
+            Favorite | Riley Sky ... | Worst | Riley Sky ... | Decade
+
+        Listeners are the names between the last metadata column before
+        ``Average`` and ``Average``. A listener's later columns are their
+        favorite / worst tracks: placed by the ``Favorite`` / ``Worst``
+        marker columns when present, otherwise by order (2nd = favorite,
+        3rd = worst), which also covers pandas-style ``Name.1`` / ``Name.2``.
+        """
         if AVERAGE_COLUMN not in cols:
             raise SheetFormatError(f"No {AVERAGE_COLUMN!r} column in sheet header: {cols!r}")
         avg_i = cols.index(AVERAGE_COLUMN)
 
         meta: dict[str, int] = {}
-        for i, c in enumerate(cols[:avg_i]):
+        for i, c in enumerate(cols):
             if c in METADATA_COLUMNS and c not in meta:
                 meta[c] = i
-        start = max(meta.values(), default=-1) + 1
+        start = max((i for i in meta.values() if i < avg_i), default=-1) + 1
 
-        # Group the columns between metadata and Average into runs: a named
-        # column opens a listener, and following columns with the same base
-        # name (or no name) belong to it as favorite / least favorite tracks.
-        groups: list[tuple[str, list[int]]] = []
-        for i in range(start, avg_i):
-            name = cols[i]
-            base = _base_name(name)
-            if not name or name.lower().startswith("unnamed"):
-                if groups:
-                    groups[-1][1].append(i)
-                continue
-            if groups and base == groups[-1][0]:
-                groups[-1][1].append(i)
-            else:
-                groups.append((base, [i]))
+        names: list[str] = []
+        for c in cols[start:avg_i]:
+            base = _base_name(c)
+            if base and not base.lower().startswith("unnamed") and base not in names:
+                names.append(base)
+
+        fav_marker = _first_index(cols, _FAVORITE_MARKERS)
+        worst_marker = _first_index(cols, _WORST_MARKERS)
 
         listeners: dict[str, tuple[int, int | None, int | None]] = {}
-        for name, idxs in groups:
-            if name in listeners:
-                continue
-            fav = idxs[1] if len(idxs) > 1 else None
-            least = idxs[2] if len(idxs) > 2 else None
-            listeners[name] = (idxs[0], fav, least)
+        for name in names:
+            score_i = next(i for i in range(start, avg_i) if _base_name(cols[i]) == name)
+            later = [i for i in range(score_i + 1, len(cols)) if _base_name(cols[i]) == name]
+            fav = least = None
+            unplaced: list[int] = []
+            for i in later:
+                if worst_marker is not None and i > worst_marker:
+                    least = least if least is not None else i
+                elif fav_marker is not None and i > fav_marker:
+                    fav = fav if fav is not None else i
+                else:
+                    unplaced.append(i)
+            if fav is None and unplaced:
+                fav = unplaced.pop(0)
+            if least is None and unplaced:
+                least = unplaced.pop(0)
+            listeners[name] = (score_i, fav, least)
         return cls(meta=meta, listeners=listeners)
+
+
+def _first_index(cols: list[str], names: set[str]) -> int | None:
+    return next((i for i, c in enumerate(cols) if c.lower() in names), None)
 
 
 def _cell(cells: list[str], meta: dict[str, int], name: str) -> str | None:
@@ -225,11 +251,26 @@ def _year_to_decade(year: int | None) -> str | None:
     return f"{(year // 10) * 10}s"
 
 
+def _normalize_decade(value: str | None) -> str | None:
+    """'2020' -> '2020s'; anything else ('60s', '1990s') is kept as written."""
+    if value and re.fullmatch(r"\d{4}", value):
+        return f"{value}s"
+    return value
+
+
 def _parse_date(value: str | None) -> str | None:
     if not value:
         return None
     # gviz sometimes appends a time: "1/5/2024 0:00:00"
     candidate = value.split(" ")[0] if re.match(r"^\d", value) else value
+    # Fast path for the sheet's own M/D/YYYY (strptime is slow under Pyodide).
+    m = _MDY_RE.match(candidate)
+    if m:
+        month, day, year = (int(g) for g in m.groups())
+        try:
+            return date(year if year >= 100 else 2000 + year, month, day).isoformat()
+        except ValueError:
+            return value
     for fmt in _DATE_FORMATS:
         try:
             return datetime.strptime(candidate, fmt).date().isoformat()

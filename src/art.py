@@ -9,6 +9,7 @@ R2 bucket).
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import re
 import unicodedata
@@ -69,11 +70,18 @@ def normalize(text: str) -> str:
     return re.sub(r"^the ", "", text)
 
 
+FUZZY_RATIO = 0.85  # tolerates sheet typos like "Led Zepplin" or "Supertamp"
+
+
 def names_match(wanted: str, found: str | None) -> bool:
     if not found:
         return False
     a, b = normalize(wanted), normalize(found)
-    return bool(a and b) and (a == b or a in b or b in a)
+    if not a or not b:
+        return False
+    if a == b or a in b or b in a:
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= FUZZY_RATIO
 
 
 def slug(text: str) -> str:
@@ -107,7 +115,9 @@ class DeezerProvider:
         self.http = http
 
     async def find_cover_url(self, artist: str, album: str) -> str | None:
-        q = f'artist:"{artist}" album:"{album}"'
+        # Plain query, not artist:"..." album:"...": Deezer's free-text
+        # search forgives typos, and names_match filters the results.
+        q = f"{artist} {album}"
         data = await self.http.get_json(
             "https://api.deezer.com/search/album?" + urlencode({"q": q, "limit": 10})
         )

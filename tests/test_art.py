@@ -79,7 +79,11 @@ def test_names_match_is_loose():
     assert names_match("Simon & Garfunkel", "Simon and Garfunkel")
     assert names_match("Björk", "Bjork")
     assert names_match("OK Computer", "OK Computer (Remastered)")
+    assert names_match("Led Zepplin", "Led Zeppelin")
+    assert names_match("Supertamp", "Supertramp")
+    assert names_match("Red Hot Chilli Peppers", "Red Hot Chili Peppers")
     assert not names_match("Radiohead", "Muse")
+    assert not names_match("Blur", "Muse")
     assert not names_match("Radiohead", None)
 
 
@@ -101,7 +105,7 @@ def test_deezer_picks_matching_result():
     ]}})
     assert run(DeezerProvider(http).find_cover_url("Radiohead", "OK Computer")) == "https://x/ok.jpg"
     q = parse_qs(urlparse(http.calls[0][0]).query)["q"][0]
-    assert q == 'artist:"Radiohead" album:"OK Computer"'
+    assert q == "Radiohead OK Computer"
 
 
 def test_deezer_rejects_non_matching_results():

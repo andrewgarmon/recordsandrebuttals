@@ -37,7 +37,7 @@ def test_whitespace_header_becomes_date_and_is_iso(club):
 
 
 def test_decade_kept_from_sheet_or_derived(club):
-    assert club.albums[0].decade == "60s"
+    assert club.albums[0].decade == "1960s"  # "1960" in the sheet
     assert club.albums[3].decade == "1990s"  # blank Decade cell -> derived
     assert club.albums[3].release_year == 1997
 
@@ -74,15 +74,22 @@ def test_pandas_style_suffixes():
     assert data.albums[0] == Album(1, "A", "B", "Alice", "2024-01-01", None, None)
 
 
-def test_blank_track_headers_belong_to_preceding_listener():
+def test_marker_columns_place_tracks_when_a_listener_is_missing_one():
+    # Bob has no column in the Favorite block; his Worst column must not
+    # be mistaken for a favorite.
     csv_text = (
-        "Date,Requester,Artist,Album,Alice,,,Bob,,,Average\n"
-        "2024-01-01,Alice,A,B,50,Fav,Least,60,F2,L2,55\n"
+        "Date,Requester,Artist,Album,Alice,Bob,Average,Favorite,Alice,Worst,Alice,Bob,Decade\n"
+        "2024-01-01,Alice,A,B,50,60,55,,FavA,,WorstA,WorstB,2020\n"
     )
     data = parse_csv(csv_text)
-    assert data.listeners == ["Alice", "Bob"]
-    bob = data.reviews[1]
-    assert (bob.favorite_track, bob.least_favorite_track) == ("F2", "L2")
+    alice, bob = data.reviews
+    assert (alice.favorite_track, alice.least_favorite_track) == ("FavA", "WorstA")
+    assert (bob.favorite_track, bob.least_favorite_track) == (None, "WorstB")
+    assert data.albums[0].decade == "2020s"
+
+
+def test_decade_after_average_is_not_a_listener(club):
+    assert "Decade" not in club.listeners and "Median" not in club.listeners
 
 
 def test_existing_date_column_not_overwritten():
