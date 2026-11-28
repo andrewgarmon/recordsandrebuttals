@@ -23,7 +23,7 @@ stored JSON.
 | `pipeline/analytics.py` | Every stat on the site, in one payload. Standard library only. |
 | `pipeline/build_data.py` | Fetches the sheet and writes `club-data.json`. |
 | `.github/workflows/refresh-data.yml` | Runs the build and writes the result to KV: every 30 min, after pipeline changes on `main`, or on demand. |
-| `src/art.py` | Album covers from a chain of providers (fuzzy name matching), with optional R2 caching. |
+| `src/art.py` | Album covers from a chain of providers (fuzzy name matching), cached in the R2 bucket `record-club-art`. |
 | `src/entry.py` | The Worker: routing, edge cache, KV read. |
 | `public/` | The site. No build step. |
 
@@ -52,8 +52,10 @@ at startup with `No module named 'workers'`.
    overview page), `SHEETS_DOC_ID`, and optionally `SHEETS_GID`.
 4. Run **Actions → Refresh club data → Run workflow** once to fill KV.
 5. Optional: a `LAST_FM_API_KEY` Worker secret adds Last.fm as a cover
-   source. Optional R2 cover cache: `npx wrangler r2 bucket create record-club-art`,
-   then uncomment `r2_buckets` in `wrangler.jsonc`.
+   source.
+6. **R2 bucket** `record-club-art` (R2 Object Storage → Create bucket) for the
+   cover cache. Without it, remove `r2_buckets` from `wrangler.jsonc` and covers
+   fall back to the edge cache.
 
 The sheet must stay viewable by anyone with the link. If it isn't, the
 Action fails and the site keeps serving the last good data.
