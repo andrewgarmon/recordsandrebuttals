@@ -121,6 +121,43 @@ function heatmap(id, rowNames, colNames, getValue, { colorscale = RYG, zmin, zma
 }
 
 // ---------------------------------------------------------------------------
+// Genres
+// ---------------------------------------------------------------------------
+
+// Categorical palette (validated for color-vision deficiency), light and dark
+// steps of the same hues. Common genres keep a fixed hue so a genre is the
+// same color on every chart; "Other" is gray.
+const SERIES = {
+  light: ["#257de0", "#f47230", "#00b894", "#f2a600", "#ee7fac", "#008a17", "#6a4ce2", "#ec4647"],
+  dark: ["#338ced", "#e76624", "#00a888", "#d28e05", "#e24d8b", "#0aac23", "#9887ef", "#eb6263"],
+};
+const GENRE_SLOT = { "Alternative": 0, "Rap/Hip Hop": 1, "Rock": 2, "Pop": 3, "R&B": 4, "Metal": 5, "Country": 6, "Jazz": 7 };
+const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+let GENRE_COLORS = {};
+
+function assignGenreColors(genres) {
+  const palette = isDark() ? SERIES.dark : SERIES.light;
+  const used = new Set();
+  GENRE_COLORS = { Other: isDark() ? "#6b6b6b" : "#a3a3a3", Unknown: isDark() ? "#6b6b6b" : "#a3a3a3" };
+  const named = genres.filter((g) => g !== "Other");
+  named.forEach((g) => {
+    const slot = GENRE_SLOT[g];
+    if (slot !== undefined && !used.has(slot)) { GENRE_COLORS[g] = palette[slot]; used.add(slot); }
+  });
+  named.forEach((g) => {
+    if (GENRE_COLORS[g]) return;
+    const slot = palette.findIndex((_, i) => !used.has(i));
+    GENRE_COLORS[g] = palette[slot] ?? GENRE_COLORS.Other;
+    used.add(slot);
+  });
+}
+
+function genreTag(g) {
+  const bucket = DATA.genres?.chart_genres.includes(g) ? g : "Other";
+  return `<span class="tag"><span class="swatch" style="background:${GENRE_COLORS[bucket] || GENRE_COLORS.Other}"></span>${esc(g)}</span>`;
+}
+
+// ---------------------------------------------------------------------------
 // Pages
 // ---------------------------------------------------------------------------
 
@@ -153,6 +190,7 @@ function renderAlbums() {
 
   const cols = [
     { key: "album", label: "Album", html: (r) => albumBlock(r.album_id, { size: "sm" }) },
+    { key: "genre", label: "Genre", html: (r) => (r.genre ? genreTag(r.genre) : "—") },
     { key: "date", label: "Date" },
     { key: "mean", label: "Mean", num: true, html: (r) => `<span class="${scoreClass(r.mean)}">${fmt(r.mean)}</span>` },
     { key: "median", label: "Median", num: true },
@@ -164,7 +202,7 @@ function renderAlbums() {
   const search = $("#album-search");
   const draw = () => {
     const q = search.value.trim().toLowerCase();
-    const rows = DATA.albums.filter((a) => !q || [a.artist, a.album, a.requester].some((s) => (s || "").toLowerCase().includes(q)));
+    const rows = DATA.albums.filter((a) => !q || [a.artist, a.album, a.requester, ...(a.genres || [])].some((s) => (s || "").toLowerCase().includes(q)));
     renderTable($("#album-table"), cols, rows, { sortKey: "mean" });
   };
   search.oninput = draw;
@@ -219,6 +257,110 @@ function renderListeners() {
   const dev = DATA.deviation;
   const rows = [...L, "average"];
   heatmap("chart-deviation", rows, L, (a, b) => (a === "average" ? dev.average[b] : dev.matrix[a]?.[b]) ?? null, { colorscale: GYR });
+}
+
+function renderGenres() {
+  const G = DATA.genres;
+  if (!G) {
+    $("#genres").innerHTML = "<p>Genres show up after the next data refresh.</p>";
+    return;
+  }
+  const sup = G.superlatives;
+  const names = (x) => (x.genres.length ? x.genres.map(esc).join(", ") : "—");
+  $("#genre-cards").innerHTML = [
+    card("Most picked", names(sup.most_picked), `${fmtInt(sup.most_picked.value)} albums`),
+    card("Most loved", names(sup.most_loved), `avg ${fmt(sup.most_loved.value)}`),
+    card("Least loved", names(sup.least_loved), `avg ${fmt(sup.least_loved.value)}`),
+    card("Most divisive", names(sup.most_divisive), `avg σ ${fmt(sup.most_divisive.value)} per album`),
+    card("Widest-ranging picker", sup.most_varied_picker.requesters.map(esc).join(", ") || "—", `${fmtInt(sup.most_varied_picker.value)} genres`),
+  ].join("");
+
+  const css = getComputedStyle(document.documentElement);
+  const surface = css.getPropertyValue("--pico-card-background-color").trim() || "#fff";
+  const gap = { color: surface, width: 2 };
+  const cg = G.chart_genres;
+  const stats = Object.fromEntries(G.genres.map((g) => [g.genre, g]));
+  // "Other" as one row: totals over the folded-in genres.
+  const bucketAlbums = (g) => DATA.albums.filter((a) => G.album_genre[a.album_id] === g);
+  const rowFor = (g) => {
+    if (stats[g]) return stats[g];
+    const albums = bucketAlbums(g);
+    const scores = albums.filter((a) => a.mean !== null);
+    return {
+      genre: g, album_count: albums.length, share: albums.length / DATA.albums.length,
+      album_mean: scores.length ? scores.reduce((t, a) => t + a.mean, 0) / scores.length : null,
+    };
+  };
+  const rows = cg.map(rowFor);
+
+  // Ranked bars, biggest at the top. Share labels sit on the bars.
+  const byCount = [...rows].sort((a, b) => a.album_count - b.album_count);
+  plot("chart-genre-share", [{
+    type: "bar", orientation: "h", y: byCount.map((r) => r.genre), x: byCount.map((r) => r.album_count),
+    text: byCount.map((r) => `${Math.round(r.share * 100)}%`), textposition: "auto",
+    marker: { color: byCount.map((r) => GENRE_COLORS[r.genre]), line: gap },
+    hovertemplate: "%{y}: %{x} albums (%{text})<extra></extra>",
+  }], { xaxis: { title: "Albums" }, margin: { t: 10, r: 10, b: 50, l: 100 } });
+
+  const byScore = rows.filter((r) => r.album_mean !== null).sort((a, b) => a.album_mean - b.album_mean);
+  plot("chart-genre-scores", [{
+    type: "bar", orientation: "h", y: byScore.map((r) => r.genre), x: byScore.map((r) => r.album_mean),
+    text: byScore.map((r) => fmt(r.album_mean)), textposition: "auto",
+    marker: { color: byScore.map((r) => GENRE_COLORS[r.genre]), line: gap },
+    hovertemplate: "%{y}: %{x:.1f} average album score<extra></extra>",
+  }], { xaxis: { title: "Average album score", range: [AXIS_MIN, SCALE.max] }, margin: { t: 10, r: 10, b: 50, l: 100 } });
+
+  // Taste heatmap: diverging red (below their usual) - gray - blue (above).
+  const L = DATA.listeners;
+  const T = G.tastes;
+  const z = L.map((l) => cg.map((g) => T[l]?.affinity[g] ?? null));
+  const lim = Math.max(5, ...z.flat().filter((v) => v !== null).map(Math.abs));
+  const mid = isDark() ? "#383838" : "#efefef";
+  plot("chart-genre-taste", [{
+    type: "heatmap", x: cg, y: L, z, zmin: -lim, zmax: lim, showscale: false, hoverongaps: false,
+    colorscale: [[0, "#ec4647"], [0.5, mid], [1, "#257de0"]],
+    text: z.map((row) => row.map((v) => (v === null ? "" : `${v > 0 ? "+" : ""}${v.toFixed(1)}`))),
+    texttemplate: "%{text}",
+    customdata: L.map((l) => cg.map((g) => [fmt(T[l]?.avg[g]), T[l]?.counts[g] ?? 0, fmt(T[l]?.mean)])),
+    hovertemplate: "%{y} on %{x}: avg %{customdata[0]} over %{customdata[1]} albums<br>(their usual: %{customdata[2]})<extra></extra>",
+    xgap: 2, ygap: 2,
+  }], { yaxis: { autorange: "reversed" }, xaxis: { side: "top" }, margin: { t: 40, r: 10, b: 10, l: 90 } });
+
+  const list = (gs) => (gs.length ? gs.map(genreTag).join(" ") : "—");
+  renderTable($("#genre-favs"), [
+    { key: "listener", label: "Listener" },
+    { key: "fav", label: "Favorite", html: (r) => `${list(r.fav)} <small>${r.favBy}</small>` },
+    { key: "least", label: "Least favorite", html: (r) => `${list(r.least)} <small>${r.leastBy}</small>` },
+  ], L.map((l) => {
+    const t = T[l];
+    const by = (gs) => (gs.length ? `${t.affinity[gs[0]] > 0 ? "+" : ""}${fmt(t.affinity[gs[0]])}` : "");
+    return { listener: l, fav: t.favorite, least: t.least_favorite, favBy: by(t.favorite), leastBy: by(t.least_favorite) };
+  }));
+
+  // Stacked bars: one segment per genre, 2px surface gaps between them.
+  const stacked = (id, cats, counts, xTitle) =>
+    plot(id, cg.map((g) => ({
+      type: "bar", name: g, x: cats, y: cats.map((c) => counts[c]?.[g] ?? 0),
+      marker: { color: GENRE_COLORS[g], line: gap },
+      hovertemplate: `%{x}: %{y} ${esc(g)}<extra></extra>`,
+    })), { barmode: "stack", xaxis: { title: xTitle }, yaxis: { title: "Albums" }, legend: { orientation: "h", y: -0.25 }, margin: { t: 10, r: 10, b: 90, l: 50 } });
+  stacked("chart-genre-requesters", DATA.requesters, G.by_requester, "");
+  stacked("chart-genre-decades", Object.keys(G.by_decade), G.by_decade, "");
+
+  const titles = (ids) => ids.map((id) => esc(ALBUMS.get(id)?.album)).join(", ") || "—";
+  renderTable($("#genre-table"), [
+    { key: "genre", label: "Genre", html: (r) => genreTag(r.genre) },
+    { key: "album_count", label: "Albums", num: true, html: (r) => fmtInt(r.album_count) },
+    { key: "album_mean", label: "Avg album", num: true, html: (r) => `<span class="${scoreClass(r.album_mean)}">${fmt(r.album_mean)}</span>` },
+    { key: "avg_album_stdev", label: "Avg σ", num: true },
+    { key: "best", label: "Best", html: (r) => titles(r.best_album_ids) },
+    { key: "worst", label: "Worst", html: (r) => titles(r.worst_album_ids) },
+  ], G.genres, { sortKey: "album_count" });
+
+  const other = G.genres.filter((g) => !cg.includes(g.genre)).map((g) => g.genre);
+  $("#genre-note").textContent =
+    "Genres come from Deezer (iTunes when Deezer doesn't know an album), using each album's first-listed genre." +
+    (other.length ? ` Other = ${other.join(", ")}.` : "");
 }
 
 function renderStats() {
@@ -281,9 +423,9 @@ function renderStats() {
 // Routing and boot
 // ---------------------------------------------------------------------------
 
-const PAGES = ["overview", "albums", "listeners", "stats"];
+const PAGES = ["overview", "albums", "listeners", "genres", "stats"];
 const rendered = new Set();
-const RENDER = { overview: renderOverview, albums: renderAlbums, listeners: renderListeners, stats: renderStats };
+const RENDER = { overview: renderOverview, albums: renderAlbums, listeners: renderListeners, genres: renderGenres, stats: renderStats };
 
 function show() {
   const page = PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
@@ -307,6 +449,9 @@ async function boot() {
     DATA = body;
     SCALE = DATA.score_scale || SCALE;
     ALBUMS = new Map(DATA.albums.map((a) => [a.album_id, a]));
+    // Older payloads (before genres) still render; the Genres tab says so.
+    DATA.genres = DATA.genres || null;
+    if (DATA.genres) assignGenreColors(DATA.genres.chart_genres);
     const { mean, stdev } = DATA.overview;
     if (mean !== null && stdev) {
       CMIN = Math.max(SCALE.min, mean - 2 * stdev);
