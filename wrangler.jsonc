@@ -20,5 +20,8 @@
   // Album-art R2 cache (optional). Create the bucket first, then uncomment:
   //   npx wrangler r2 bucket create record-club-art
   // "r2_buckets": [{ "binding": "COVER_ART_BUCKET", "bucket_name": "record-club-art" }],
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": true, "persist": true }
+  }
 }
