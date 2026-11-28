@@ -11,3 +11,9 @@ dev = ["pytest>=8", "workers-py", "workers-runtime-sdk"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Not an installable package. Cloudflare's build runs `pip install .` when it
+# sees this file; with no packages listed, setuptools keeps its egg-info out
+# of src/ (where it would be uploaded as Worker modules).
+[tool.setuptools]
+packages = []

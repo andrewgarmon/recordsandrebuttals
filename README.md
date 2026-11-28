@@ -32,8 +32,14 @@ Scores are on a 0–100 scale (`SCORE_MAX` in `pipeline/analytics.py`).
 ## Deploying
 
 Cloudflare Workers Builds deploys on every push. `main` goes to production;
-other branches get preview URLs. The deploy command is the default
-`npx wrangler deploy`.
+other branches get preview URLs. In the Worker's Settings → Builds:
+
+- **Deploy command:** `sh scripts/cf-build.sh deploy`
+- **Non-production branch deploy command:** `sh scripts/cf-build.sh preview`
+
+The script deploys through `pywrangler`, which bundles the `workers` Python SDK
+with the Worker. Plain `npx wrangler deploy` doesn't, and the Worker then fails
+at startup with `No module named 'workers'`.
 
 ### One-time setup
 

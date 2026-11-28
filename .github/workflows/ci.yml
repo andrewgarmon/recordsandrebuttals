@@ -17,3 +17,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install pytest
       - run: pytest -q
+
+  worker-bundle:
+    # Same build Cloudflare runs (scripts/cf-build.sh), as a dry run: catches
+    # bundling problems such as the workers SDK not being vendored.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sh scripts/cf-build.sh deploy --dry-run --outdir dist
+      - name: Check the workers SDK is in the bundle
+        run: |
+          test -d python_modules/workers
+          ! ls src | grep -q egg-info
