@@ -32,6 +32,11 @@ TOP_N = 25
 BOTTOM_N = 10
 SPREAD_N = 10
 HOT_TAKES_N = 10
+GENRE_MIN_ALBUMS = 3  # genres with fewer albums fold into "Other" in charts
+GENRE_MAX = 7  # at most this many named genres in charts (+ "Other")
+GENRE_MIN_REVIEWS = 3  # a listener's favorite genre needs this many of their scores
+OTHER = "Other"
+UNKNOWN = "Unknown"
 
 
 # --------------------------------------------------------------------------
@@ -165,6 +170,8 @@ def _album_row(idx: _Index, a: Album) -> dict[str, Any]:
         "date": a.date,
         "release_year": a.release_year,
         "decade": a.decade,
+        "genre": a.genres[0] if a.genres else None,
+        "genres": list(a.genres),
         "count": len(scores),
         "mean": mean(scores),
         "median": median(scores),
@@ -489,6 +496,131 @@ def hot_takes(data: ClubData, n: int = HOT_TAKES_N) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------
 
 
+def genre_breakdown(data: ClubData, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Genre stats, by each album's primary genre.
+
+    ``genres`` lists every primary genre (plus "Unknown" for albums with
+    none). Charts use ``chart_genres``: the biggest few, with the rest folded
+    into "Other". Listener tastes exclude self-scores, like the other
+    reception stats, since people tend to pick (and rate) their own genres.
+    """
+    idx = _index(data)
+    primary = {r["album_id"]: r["genre"] or UNKNOWN for r in rows}
+    members: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        members[primary[r["album_id"]]].append(r)
+
+    genres = []
+    for g, ms in members.items():
+        scores = [rv.score for m in ms for rv in idx.by_album.get(m["album_id"], [])]
+        means = {str(m["album_id"]): m["mean"] for m in ms if m["mean"] is not None}
+        spreads = [m["stdev"] for m in ms if m["stdev"] is not None]
+        genres.append(
+            {
+                "genre": g,
+                "album_count": len(ms),
+                "review_count": len(scores),
+                "share": len(ms) / len(rows) if rows else None,
+                "mean": mean(scores),
+                "album_mean": mean(list(means.values())),
+                # how much listeners disagree on a typical album of this genre
+                "avg_album_stdev": mean(spreads),
+                "best_album_ids": [int(k) for k in _argbest(means, highest=True)],
+                "worst_album_ids": [int(k) for k in _argbest(means, highest=False)],
+                "requesters": _count(m["requester"] for m in ms if m["requester"]),
+            }
+        )
+    genres.sort(key=lambda g: (g["genre"] == UNKNOWN, -g["album_count"], g["genre"]))
+
+    named = [
+        g["genre"] for g in genres
+        if g["genre"] != UNKNOWN and g["album_count"] >= GENRE_MIN_ALBUMS
+    ][:GENRE_MAX]
+    bucket = {aid: (g if g in named else OTHER) for aid, g in primary.items()}
+    chart_genres = named + ([OTHER] if any(b == OTHER for b in bucket.values()) else [])
+
+    # Listener tastes: average score per genre bucket, and how far that sits
+    # from the listener's own average (so harsh and generous scorers compare).
+    tastes: dict[str, dict[str, Any]] = {}
+    for lst in idx.listeners:
+        given = [r for r in idx.by_listener[lst] if not idx.is_self(r)]
+        overall = mean([r.score for r in given])
+        by_bucket: dict[str, list[float]] = defaultdict(list)
+        for r in given:
+            by_bucket[bucket[r.album_id]].append(r.score)
+        avg = {g: mean(by_bucket[g]) for g in chart_genres}
+        affinity = {
+            g: (avg[g] - overall if avg[g] is not None and overall is not None else None)
+            for g in chart_genres
+        }
+        eligible = {
+            g: v for g, v in affinity.items()
+            if v is not None and g != OTHER and len(by_bucket[g]) >= GENRE_MIN_REVIEWS
+        }
+        tastes[lst] = {
+            "mean": overall,
+            "avg": avg,
+            "affinity": affinity,
+            "counts": {g: len(by_bucket[g]) for g in chart_genres},
+            # Both need two genres to compare: with one, it's not a preference.
+            "favorite": _argbest(eligible, highest=True) if len(eligible) > 1 else [],
+            "least_favorite": _argbest(eligible, highest=False) if len(eligible) > 1 else [],
+        }
+
+    by_requester = {
+        req: _count(bucket[a.album_id] for a in idx.by_requester.get(req, []))
+        for req in idx.requesters
+    }
+    variety = {
+        req: float(len({primary[a.album_id] for a in idx.by_requester.get(req, [])} - {UNKNOWN}))
+        for req in idx.requesters
+    }
+    by_decade: dict[str, dict[str, int]] = defaultdict(dict)
+    for r in rows:
+        if r["decade"]:
+            cell = by_decade[r["decade"]]
+            cell[bucket[r["album_id"]]] = cell.get(bucket[r["album_id"]], 0) + 1
+    decades = [d["decade"] for d in decade_breakdown(data, rows)]
+
+    ranked = {
+        g["genre"]: g for g in genres
+        if g["genre"] in named and g["mean"] is not None
+    }
+
+    def pick(field: str, highest: bool) -> dict[str, Any]:
+        values = {g: v[field] for g, v in ranked.items() if v[field] is not None}
+        names = _argbest(values, highest=highest)
+        return {"genres": names, "value": values[names[0]] if names else None}
+
+    def pick_requester(values: dict[str, float]) -> dict[str, Any]:
+        names = _argbest(values, highest=True)
+        return {"requesters": names, "value": values[names[0]] if names else None}
+
+    return {
+        "genres": genres,
+        "chart_genres": chart_genres,
+        "album_genre": {str(aid): b for aid, b in bucket.items()},
+        "tastes": tastes,
+        "by_requester": by_requester,
+        "by_decade": {d: by_decade[d] for d in decades if d in by_decade},
+        "unknown_count": sum(1 for g in primary.values() if g == UNKNOWN),
+        "superlatives": {
+            "most_picked": pick("album_count", highest=True),
+            "most_loved": pick("mean", highest=True),
+            "least_loved": pick("mean", highest=False),
+            "most_divisive": pick("avg_album_stdev", highest=True),
+            "most_varied_picker": pick_requester(variety),
+        },
+    }
+
+
+def _count(items: Iterable[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for it in items:
+        out[it] = out.get(it, 0) + 1
+    return out
+
+
 def build_payload(data: ClubData) -> dict[str, Any]:
     """Everything the frontend needs, as one JSON-ready dict."""
     rows = album_stats(data)
@@ -515,5 +647,6 @@ def build_payload(data: ClubData) -> dict[str, Any]:
             "timeline": timeline(rows),
             "hot_takes": hot_takes(data),
         },
+        "genres": genre_breakdown(data, rows),
     }
     return round_floats(payload)

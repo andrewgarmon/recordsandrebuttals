@@ -1,0 +1,11 @@
+{
+  "_comment": "Genres that beat the Deezer/iTunes lookup. Key: 'Artist - Album' exactly as in the sheet (case and punctuation don't matter). Value: a genre or a list, broadest first. Use the site's names: Alternative, Rock, Metal, Pop, Rap/Hip Hop, R&B, Soul & Funk, Country, Folk, Jazz, Blues, Electro, Reggae, Latin Music, World, Singer & Songwriter.",
+  "Paul & Linda McCartney - Ram": "Rock",
+  "Rhyme Asylum - State of Lunacy": "Rap/Hip Hop",
+  "Frank Ocean - Channel Orange": "R&B",
+  "Ms. Lauryn Hill - The Miseducation of Lauryn Hill": ["R&B", "Rap/Hip Hop"],
+  "Rage Against The Machine - Rage Against The Machine": ["Rock", "Metal"],
+  "Judas Priest - Sad Wings Of Destiny": ["Metal", "Rock"],
+  "Black Star - Mos Def & Talib Kweli Are Black Star": "Rap/Hip Hop",
+  "Little Brother - The Minstrel Show": "Rap/Hip Hop"
+}

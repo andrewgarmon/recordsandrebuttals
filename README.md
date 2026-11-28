@@ -7,7 +7,7 @@ Streamlit app in [`andrewgarmon/record_club`](https://github.com/andrewgarmon/re
 ## How it fits together
 
 ```
-Google Sheet ──► pipeline/ (GitHub Action, every 30 min) ──► Workers KV ──► GET /api/club-data
+Google Sheet + Deezer/iTunes genres ──► pipeline/ (GitHub Action, every 30 min) ──► Workers KV ──► GET /api/club-data
 Deezer → iTunes → Last.fm → MusicBrainz ──► src/art.py ──► GET /api/album-art?artist=…&album=…
 public/ (HTML + vanilla JS + Pico CSS + Plotly) ◄── everything else
 ```
@@ -21,7 +21,9 @@ stored JSON.
 | --- | --- |
 | `pipeline/sheet_parser.py` | All the sheet's quirks: blank date header, score block plus Favorite/Worst blocks that repeat listener names, `Decade` after the track blocks, stray whitespace, blank rows, integer `album_id`s. |
 | `pipeline/analytics.py` | Every stat on the site, in one payload. Standard library only. |
-| `pipeline/build_data.py` | Fetches the sheet and writes `club-data.json`. |
+| `pipeline/genres.py` | Album genres from Deezer, with iTunes as the fallback. Each run reuses the previous build's genres, so only new albums are looked up. |
+| `pipeline/genre_overrides.json` | Fixes for albums the lookup misses or gets wrong. Edit it on GitHub: `"Artist - Album": "Genre"`, spelled as in the sheet. |
+| `pipeline/build_data.py` | Fetches the sheet, adds genres, and writes `club-data.json`. |
 | `.github/workflows/refresh-data.yml` | Runs the build and writes the result to KV: every 30 min, after pipeline changes on `main`, or on demand. |
 | `src/art.py` | Album covers from a chain of providers (fuzzy name matching), cached in the R2 bucket `record-club-art`. |
 | `src/entry.py` | The Worker: routing, edge cache, KV read. |
@@ -64,6 +66,7 @@ Action fails and the site keeps serving the last good data.
 
 ```
 pip install pytest && pytest                                  # all tests, no Workers runtime needed
-python pipeline/build_data.py --doc-id SHEET_ID               # build club-data.json from the live sheet
-python scripts/preview.py sheet.csv                           # site at http://127.0.0.1:8000 from a CSV export
+python pipeline/build_data.py --doc-id SHEET_ID               # build club-data.json from the live sheet (with genres)
+python scripts/preview.py club-data.json                      # site at http://127.0.0.1:8000 from that build
+python scripts/preview.py sheet.csv                           # ...or straight from a CSV export (no genre lookup)
 ```
