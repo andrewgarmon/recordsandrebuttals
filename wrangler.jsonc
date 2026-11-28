@@ -14,17 +14,19 @@
   ],
   // Stats JSON, written by the "Refresh club data" GitHub Action (pipeline/build_data.py).
   "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "4c60988200444f79adab1bbb550d36d6" }],
-  // Branch previews read the same namespace. Safe because the Worker only
-  // reads it; only the "Refresh club data" Action writes.
+  // Album-art cache: each cover is fetched from the providers once, then served
+  // from this bucket (src/entry.py, R2ArtCache).
+  "r2_buckets": [{ "binding": "COVER_ART_BUCKET", "bucket_name": "record-club-art" }],
+  // Branch previews use the same namespace and bucket. Safe: the Worker only
+  // reads KV (only the "Refresh club data" Action writes it), and a cover is
+  // the same image whichever deploy saves it.
   "previews": {
-    "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "4c60988200444f79adab1bbb550d36d6" }]
+    "kv_namespaces": [{ "binding": "CLUB_DATA", "id": "4c60988200444f79adab1bbb550d36d6" }],
+    "r2_buckets": [{ "binding": "COVER_ART_BUCKET", "bucket_name": "record-club-art" }]
   },
   // Optional secret LAST_FM_API_KEY adds Last.fm as an album-art source:
   //   npx wrangler secret put LAST_FM_API_KEY
   // No "vars" block on purpose: deploying one would wipe vars set in the dashboard.
-  // Album-art R2 cache (optional). Create the bucket first, then uncomment:
-  //   npx wrangler r2 bucket create record-club-art
-  // "r2_buckets": [{ "binding": "COVER_ART_BUCKET", "bucket_name": "record-club-art" }],
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "invocation_logs": true, "persist": true }
