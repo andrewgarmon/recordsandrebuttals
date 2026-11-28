@@ -1,0 +1,13 @@
+[project]
+name = "recordsandrebuttals"
+version = "0.1.0"
+description = "Record club stats site: Cloudflare Python Worker + static frontend"
+requires-python = ">=3.11"
+# The Worker uses only the standard library, so there are no runtime dependencies.
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8", "workers-py", "workers-runtime-sdk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
